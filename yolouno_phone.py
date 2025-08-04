@@ -74,6 +74,7 @@ class OpenBotParser:
                 parts = buf.split(',')
                 if len(parts) == 6:
                     self.target_x, self.target_y, self.target_w, self.target_h, self.img_width, self.img_height = map(int, parts)
+                    self.has_target = True
                     # if self.target_w > 0 and self.target_h > 0:
                     #     self.has_target = True
                     # else:
