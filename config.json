@@ -1,0 +1,15 @@
+{
+    "name": "Openbot by KDI EDU",
+    "description": "Extension hỗ trợ nhận dữ liệu camera trên điện thoại android",
+    "libs": [
+        "yolouno_phone.py"
+    ],
+    "blocks": [
+        "definition.js"
+    ],
+    "toolbox": "toolbox.xml",
+    "languages": {
+        
+    },
+    "poster": "kdi_logo.png"
+}
