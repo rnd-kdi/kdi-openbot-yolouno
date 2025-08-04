@@ -74,10 +74,10 @@ class OpenBotParser:
                 parts = buf.split(',')
                 if len(parts) == 6:
                     self.target_x, self.target_y, self.target_w, self.target_h, self.img_width, self.img_height = map(int, parts)
-                    if self.target_w > 0 and self.target_h > 0:
-                        self.has_target = True
-                    else:
-                        self.has_target = False
+                    # if self.target_w > 0 and self.target_h > 0:
+                    #     self.has_target = True
+                    # else:
+                    #     self.has_target = False
                     # print(f"Target: x={self.target_x}, y={self.target_y}, w={self.target_w}, h={self.target_h}, imgW={self.img_width}, imgH={self.img_height}")
                 else:
                     print("[ERROR] Invalid target format:", buf)
