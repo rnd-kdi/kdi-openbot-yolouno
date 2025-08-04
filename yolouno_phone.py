@@ -171,11 +171,11 @@
 # #         time.sleep(0.01)
 
 
-# ESP32 MicroPython - OpenBot Parser (MicroPython Compatible)
+# ESP32 MicroPython - OpenBot Parser (Smooth Version)
 import sys
 import time
 
-print("Yolouno OpenBot Parser (MicroPython Optimized)")
+print("Yolouno OpenBot Parser (Smooth Reading)")
 print("Sẵn sàng nhận lệnh từ điện thoại...")
 print("-" * 60)
 
@@ -195,68 +195,91 @@ class OpenBotParser:
         self.header = ''
         self.msg_buf = ''
         
-        # Optimization: cache last read time
-        self._last_read_ms = 0
-        self._read_interval_ms = 20  # Min interval between reads
+        # Smooth reading optimization
+        self._last_update_ms = 0
+        self._data_age_threshold = 100  # Consider data stale after 100ms
+        self._consecutive_reads = 0
+        self._max_consecutive = 3  # Max reads in a row
         
-    def _should_read(self):
-        """Check if we should read new data"""
+    def _get_time_ms(self):
+        """Get current time in ms, compatible with different MicroPython versions"""
         try:
-            current = time.ticks_ms()
-            if time.ticks_diff(current, self._last_read_ms) > self._read_interval_ms:
-                self._last_read_ms = current
-                return True
-            return False
+            return time.ticks_ms()
         except:
-            # Fallback if ticks_ms not available
-            return True
+            return int(time.time() * 1000)
+            
+    def _time_diff_ms(self, start, end):
+        """Calculate time difference, compatible with different versions"""
+        try:
+            return time.ticks_diff(end, start)
+        except:
+            return end - start
             
     def read_stdin(self):
-        """Optimized read - non-blocking with timeout"""
-        if not self._should_read():
-            return
-            
+        """Adaptive read - reads more when data is available, less when not"""
         try:
-            # Set a max iterations to prevent infinite loop
-            max_chars = 100
-            chars_read = 0
+            # Check if we should skip reading
+            current_ms = self._get_time_ms()
+            data_age = self._time_diff_ms(self._last_update_ms, current_ms)
             
+            # If data is fresh and we've read recently, skip
+            if data_age < 30 and self._consecutive_reads > 1:
+                self._consecutive_reads = 0
+                return
+                
+            # Reset consecutive counter if enough time passed
+            if data_age > 50:
+                self._consecutive_reads = 0
+            
+            # Track consecutive reads
+            self._consecutive_reads += 1
+            
+            # Adaptive read amount based on data availability
             if hasattr(sys.stdin, 'read'):
+                chars_read = 0
+                max_chars = 50 if self._consecutive_reads == 1 else 150
+                data_found = False
+                
                 while chars_read < max_chars:
                     data = sys.stdin.read(1)
                     if not data:
+                        # No data available
+                        if not data_found:
+                            # No data at all, reduce future reads
+                            self._consecutive_reads = self._max_consecutive
                         break
                     
+                    data_found = True
                     chars_read += 1
-                    old_msg_part = self.msg_part
-                    old_header = self.header
+                    old_has_target = self.has_target
                     
                     self.process_char(data)
                     
+                    # If we just got new target data, update timestamp
+                    if not old_has_target and self.has_target:
+                        self._last_update_ms = current_ms
+                    
                     # Stop after parsing one complete message
-                    if old_msg_part == 1 and self.msg_part == 0 and old_header:
+                    if self.msg_part == 0 and self.header == '' and self.has_target:
                         break
+                        
             else:
                 # Fallback for input()
                 try:
-                    # Use raw_input if available (some MicroPython versions)
-                    if hasattr(__builtins__, 'raw_input'):
-                        data = raw_input()
-                    else:
-                        data = input()
-                    
+                    data = input()
                     for ch in data:
                         self.process_char(ch)
                     self.process_char('\n')
+                    self._last_update_ms = current_ms
                 except EOFError:
                     pass
                     
         except Exception as e:
-            # Silent fail for async compatibility
+            # Silent fail
             pass
 
     def parse_msg(self):
-        """Parse message - MicroPython compatible"""
+        """Parse message"""
         h = self.header
         buf = self.msg_buf
 
@@ -264,14 +287,23 @@ class OpenBotParser:
             try:
                 parts = buf.split(',')
                 if len(parts) == 6:
-                    # Convert to int one by one
-                    self.target_x = int(parts[0])
-                    self.target_y = int(parts[1])
-                    self.target_w = int(parts[2])
-                    self.target_h = int(parts[3])
-                    self.img_width = int(parts[4])
-                    self.img_height = int(parts[5])
+                    # Parse all values
+                    new_x = int(parts[0])
+                    new_y = int(parts[1])
+                    new_w = int(parts[2])
+                    new_h = int(parts[3])
+                    new_img_w = int(parts[4])
+                    new_img_h = int(parts[5])
+                    
+                    # Update all at once
+                    self.target_x = new_x
+                    self.target_y = new_y
+                    self.target_w = new_w
+                    self.target_h = new_h
+                    self.img_width = new_img_w
+                    self.img_height = new_img_h
                     self.has_target = True
+                    
                 else:
                     self.has_target = False
             except:
@@ -287,6 +319,11 @@ class OpenBotParser:
         if char in ('\n', '\r'):
             if self.header:
                 self.parse_msg()
+            else:
+                # Reset if empty line
+                self.msg_part = 0
+                self.header = ''
+                self.msg_buf = ''
             return
 
         if self.msg_part == 0:  # HEADER
@@ -296,21 +333,23 @@ class OpenBotParser:
         else:  # BODY
             self.msg_buf += char
 
-    # Public API - Non-blocking
+    # Public API
     def get_target_x(self):
         self.read_stdin()
         return self.target_x if self.has_target else None
     
     def get_target_y(self):
-        self.read_stdin()
+        # Don't read again if just read in get_target_x
+        if self._consecutive_reads < 2:
+            self.read_stdin()
         return self.target_y if self.has_target else None
     
     def get_target_w(self):
-        self.read_stdin()
+        # Don't read again
         return self.target_w if self.has_target else None
     
     def get_target_h(self):
-        self.read_stdin()
+        # Don't read again
         return self.target_h if self.has_target else None
     
     def get_target_box(self):
@@ -320,14 +359,19 @@ class OpenBotParser:
         return None
     
     def get_image_size(self):
-        self.read_stdin()
         if self.has_target:
             return (self.img_width, self.img_height)
         return None
     
     def is_target_available(self):
-        self.read_stdin()
         return self.has_target
+    
+    def get_data_age_ms(self):
+        """Get age of current data in milliseconds"""
+        if self.has_target:
+            current = self._get_time_ms()
+            return self._time_diff_ms(self._last_update_ms, current)
+        return -1
 
 
 
