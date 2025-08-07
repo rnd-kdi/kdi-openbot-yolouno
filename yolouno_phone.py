@@ -34,12 +34,6 @@ class OpenBotParser:
         self._consecutive_reads = 0
         self._max_consecutive = 3  # Max reads in a row
 
-    # Connection type handling
-    # connection_type is 0 for USB, 1 for Bluetooth
-    # def set_connection_type(self, connection_type):
-    #     if connection_type not in (0, 1):
-    #         raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
-    #     return connection_type
         
     def _get_time_ms(self):
         """Get current time in ms, compatible with different MicroPython versions"""
@@ -126,10 +120,17 @@ class OpenBotParser:
                         self._last_update_ms = current_ms
                         # else:  # Bluetooth
                         
-                        
+                    
                         
                     except EOFError:
                         pass
+            elif self.connection_type == 1:  # Bluetooth connection
+                # Read from Bluetooth connection
+                print("Reading from Bluetooth...")
+                
+            else:
+                raise ValueError("Invalid connection type. Use 0 for USB or 1 for Bluetooth.")    
+                    
                     
         except Exception as e:
             # Silent fail
