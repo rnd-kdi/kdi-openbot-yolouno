@@ -9,7 +9,7 @@ print("Sẵn sàng nhận lệnh từ điện thoại...")
 print("-" * 60)
 
 class OpenBotParser:
-    def __init__(self):
+    def __init__(self, connection_type):
         # Data storage
         self.target_x = 0
         self.target_y = 0
@@ -19,6 +19,10 @@ class OpenBotParser:
         self.img_height = 0
         self.has_target = False
         
+        # Connection type: 0=USB, 1=Bluetooth
+        if connection_type not in (0, 1):
+            raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
+        self.connection_type = connection_type
         # Parser state
         self.msg_part = 0  # 0=HEADER, 1=BODY
         self.header = ''
@@ -29,6 +33,13 @@ class OpenBotParser:
         self._data_age_threshold = 100  # Consider data stale after 100ms
         self._consecutive_reads = 0
         self._max_consecutive = 3  # Max reads in a row
+
+    # Connection type handling
+    # connection_type is 0 for USB, 1 for Bluetooth
+    # def set_connection_type(self, connection_type):
+    #     if connection_type not in (0, 1):
+    #         raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
+    #     return connection_type
         
     def _get_time_ms(self):
         """Get current time in ms, compatible with different MicroPython versions"""
@@ -43,65 +54,82 @@ class OpenBotParser:
             return time.ticks_diff(end, start)
         except:
             return end - start
-            
+        
+    def set_connection_type(self, connection_type):
+        """Set connection type: 0=USB, 1=Bluetooth"""
+        if connection_type not in (0, 1):
+            raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
+        self.connection_type = connection_type
+        return self.connection_type
+        
+    def get_connection_type(self):
+        """Get current connection type"""
+        return self.connection_type
+        
     def read_stdin(self):
         """Adaptive read - reads more when data is available, less when not"""
         try:
-            # Check if we should skip reading
-            current_ms = self._get_time_ms()
-            data_age = self._time_diff_ms(self._last_update_ms, current_ms)
-            
-            # If data is fresh and we've read recently, skip
-            if data_age < 30 and self._consecutive_reads > 1:
-                self._consecutive_reads = 0
-                return
+            if self.connection_type == 0:  # USB connection
+                # Check if we should skip reading
+                current_ms = self._get_time_ms()
+                data_age = self._time_diff_ms(self._last_update_ms, current_ms)
                 
-            # Reset consecutive counter if enough time passed
-            if data_age > 50:
-                self._consecutive_reads = 0
-            
-            # Track consecutive reads
-            self._consecutive_reads += 1
-            
-            # Adaptive read amount based on data availability
-            if hasattr(sys.stdin, 'read'):
-                chars_read = 0
-                max_chars = 50 if self._consecutive_reads == 1 else 150
-                data_found = False
+                # If data is fresh and we've read recently, skip
+                if data_age < 30 and self._consecutive_reads > 1:
+                    self._consecutive_reads = 0
+                    return
+                    
+                # Reset consecutive counter if enough time passed
+                if data_age > 50:
+                    self._consecutive_reads = 0
                 
-                while chars_read < max_chars:
-                    data = sys.stdin.read(1)
-                    if not data:
-                        # No data available
-                        if not data_found:
-                            # No data at all, reduce future reads
-                            self._consecutive_reads = self._max_consecutive
-                        break
+                # Track consecutive reads
+                self._consecutive_reads += 1
+                
+                # Adaptive read amount based on data availability
+                if hasattr(sys.stdin, 'read'):
+                    chars_read = 0
+                    max_chars = 50 if self._consecutive_reads == 1 else 150
+                    data_found = False
                     
-                    data_found = True
-                    chars_read += 1
-                    old_has_target = self.has_target
-                    
-                    self.process_char(data)
-                    
-                    # If we just got new target data, update timestamp
-                    if not old_has_target and self.has_target:
-                        self._last_update_ms = current_ms
-                    
-                    # Stop after parsing one complete message
-                    if self.msg_part == 0 and self.header == '' and self.has_target:
-                        break
+                    while chars_read < max_chars:
+                        data = sys.stdin.read(1)
+                        if not data:
+                            # No data available
+                            if not data_found:
+                                # No data at all, reduce future reads
+                                self._consecutive_reads = self._max_consecutive
+                            break
                         
-            else:
-                # Fallback for input()
-                try:
-                    data = input()
-                    for ch in data:
-                        self.process_char(ch)
-                    self.process_char('\n')
-                    self._last_update_ms = current_ms
-                except EOFError:
-                    pass
+                        data_found = True
+                        chars_read += 1
+                        old_has_target = self.has_target
+                        
+                        self.process_char(data)
+                        
+                        # If we just got new target data, update timestamp
+                        if not old_has_target and self.has_target:
+                            self._last_update_ms = current_ms
+                        
+                        # Stop after parsing one complete message
+                        if self.msg_part == 0 and self.header == '' and self.has_target:
+                            break
+                            
+                else:
+                    # Fallback for input()
+                    try:
+                        # if set_connection_type() == 0:  # USB
+                        data = input()
+                        for ch in data:
+                            self.process_char(ch)
+                        self.process_char('\n')
+                        self._last_update_ms = current_ms
+                        # else:  # Bluetooth
+                        
+                        
+                        
+                    except EOFError:
+                        pass
                     
         except Exception as e:
             # Silent fail
