@@ -1,242 +1,271 @@
+# File: yolouno_ble.py
+# Mô tả: Thư viện OpenBot Parser đa năng, hỗ trợ cả kết nối USB và Bluetooth.
+# Toàn bộ logic được đóng gói trong một class duy nhất. (Phiên bản sửa lỗi BLE)
 
-
-# ESP32 MicroPython - OpenBot Parser (Smooth Version)
 import sys
 import time
-
-print("Yolouno OpenBot Parser (Smooth Reading)")
-print("Sẵn sàng nhận lệnh từ điện thoại...")
-print("-" * 60)
+try:
+    import ubluetooth
+except ImportError:
+    print("Cảnh báo: Không tìm thấy thư viện ubluetooth. Chế độ Bluetooth sẽ không hoạt động.")
+    ubluetooth = None
 
 class OpenBotParser:
-    def __init__(self, connection_type):
-        # Data storage
+    """
+    Class chính để tương tác với OpenBot.
+    Hỗ trợ cả kết nối USB (0) và Bluetooth (1).
+    """
+    def __init__(self, connection_type=1):
+        """
+        Khởi tạo Parser.
+        :param connection_type: Loại kết nối. 0=USB, 1=Bluetooth (mặc định).
+        """
+        # --- Dữ liệu lưu trữ ---
         self.target_x = 0
         self.target_y = 0
         self.target_w = 0
         self.target_h = 0
-        self.img_width = 0
-        self.img_height = 0
         self.has_target = False
         
-        # Connection type: 0=USB, 1=Bluetooth
-        if connection_type not in (0, 1):
-            raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
-        self.connection_type = connection_type
-        # Parser state
-        self.msg_part = 0  # 0=HEADER, 1=BODY
+        # --- Trạng thái của bộ xử lý (dùng chung) ---
+        self.msg_part = 0
         self.header = ''
         self.msg_buf = ''
         
-        # Smooth reading optimization
+        # --- Tối ưu hóa cho đọc USB ---
         self._last_update_ms = 0
-        self._data_age_threshold = 100  # Consider data stale after 100ms
         self._consecutive_reads = 0
-        self._max_consecutive = 3  # Max reads in a row
+        self._max_consecutive = 3
+        
+        # --- Quản lý loại kết nối ---
+        self.connection_type = -1
+        self.set_connection_type(connection_type)
 
-        
-    def _get_time_ms(self):
-        """Get current time in ms, compatible with different MicroPython versions"""
-        try:
-            return time.ticks_ms()
-        except:
-            return int(time.time() * 1000)
-            
-    def _time_diff_ms(self, start, end):
-        """Calculate time difference, compatible with different versions"""
-        try:
-            return time.ticks_diff(end, start)
-        except:
-            return end - start
-        
+    # =================================================================
+    # == QUẢN LÝ KẾT NỐI                                          ==
+    # =================================================================
     def set_connection_type(self, connection_type):
-        """Set connection type: 0=USB, 1=Bluetooth"""
+        """Đặt loại kết nối: 0 cho USB, 1 cho Bluetooth."""
         if connection_type not in (0, 1):
-            raise ValueError("PHẢI chọn loại kết nối: USB hoặc Bluetooth")
+            raise ValueError("Loại kết nối không hợp lệ. Chỉ chấp nhận 0 (USB) hoặc 1 (Bluetooth).")
+        
         self.connection_type = connection_type
+        
+        if self.connection_type == 1:
+            if ubluetooth:
+                self._initialize_bluetooth()
+            else:
+                raise RuntimeError("Không thể khởi tạo Bluetooth. Thư viện ubluetooth không có sẵn.")
+        else:
+            print("Parser: Chế độ USB được chọn. Sẵn sàng đọc từ stdin.")
+            
         return self.connection_type
         
     def get_connection_type(self):
-        """Get current connection type"""
+        """Lấy loại kết nối hiện tại."""
         return self.connection_type
-        
+
+    # =================================================================
+    # == LOGIC ĐỌC DỮ LIỆU (Tách biệt cho từng loại)                ==
+    # =================================================================
     def read_stdin(self):
-        """Adaptive read - reads more when data is available, less when not"""
+        """Đọc dữ liệu từ USB (stdin) với logic tối ưu hóa."""
+        if self.connection_type != 0:
+            return
+
         try:
-            if self.connection_type == 0:  # USB connection
-                # Check if we should skip reading
-                current_ms = self._get_time_ms()
-                data_age = self._time_diff_ms(self._last_update_ms, current_ms)
+            current_ms = self._get_time_ms()
+            data_age = self._time_diff_ms(self._last_update_ms, current_ms)
+            
+            if data_age < 30 and self._consecutive_reads > 1:
+                self._consecutive_reads = 0
+                return
+            
+            if data_age > 50:
+                self._consecutive_reads = 0
+            
+            self._consecutive_reads += 1
+            
+            if hasattr(sys.stdin, 'read'):
+                chars_read = 0
+                max_chars = 50 if self._consecutive_reads == 1 else 150
+                data_found = False
                 
-                # If data is fresh and we've read recently, skip
-                if data_age < 30 and self._consecutive_reads > 1:
-                    self._consecutive_reads = 0
-                    return
+                while chars_read < max_chars:
+                    data = sys.stdin.read(1)
+                    if not data:
+                        if not data_found:
+                            self._consecutive_reads = self._max_consecutive
+                        break
                     
-                # Reset consecutive counter if enough time passed
-                if data_age > 50:
-                    self._consecutive_reads = 0
-                
-                # Track consecutive reads
-                self._consecutive_reads += 1
-                
-                # Adaptive read amount based on data availability
-                if hasattr(sys.stdin, 'read'):
-                    chars_read = 0
-                    max_chars = 50 if self._consecutive_reads == 1 else 150
-                    data_found = False
+                    data_found = True
+                    chars_read += 1
+                    old_has_target = self.has_target
                     
-                    while chars_read < max_chars:
-                        data = sys.stdin.read(1)
-                        if not data:
-                            # No data available
-                            if not data_found:
-                                # No data at all, reduce future reads
-                                self._consecutive_reads = self._max_consecutive
-                            break
-                        
-                        data_found = True
-                        chars_read += 1
-                        old_has_target = self.has_target
-                        
-                        self.process_char(data)
-                        
-                        # If we just got new target data, update timestamp
-                        if not old_has_target and self.has_target:
-                            self._last_update_ms = current_ms
-                        
-                        # Stop after parsing one complete message
-                        if self.msg_part == 0 and self.header == '' and self.has_target:
-                            break
-                            
-                else:
-                    # Fallback for input()
-                    try:
-                        # if set_connection_type() == 0:  # USB
-                        data = input()
-                        for ch in data:
-                            self.process_char(ch)
-                        self.process_char('\n')
+                    self.process_char(data)
+                    
+                    if not old_has_target and self.has_target:
                         self._last_update_ms = current_ms
-                        # else:  # Bluetooth
-                        
                     
-                        
-                    except EOFError:
-                        pass
-            elif self.connection_type == 1:  # Bluetooth connection
-                # Read from Bluetooth connection
-                print("Reading from Bluetooth...")
-                
-            else:
-                raise ValueError("Invalid connection type. Use 0 for USB or 1 for Bluetooth.")    
-                    
-                    
+                    if self.msg_part == 0 and self.header == '' and self.has_target:
+                        break
+            else: # Fallback
+                data = input()
+                for ch in data:
+                    self.process_char(ch)
+                self.process_char('\n')
+                self._last_update_ms = current_ms
+        except (EOFError, KeyboardInterrupt):
+            pass
         except Exception as e:
-            # Silent fail
             pass
 
-    def parse_msg(self):
-        """Parse message"""
-        h = self.header
-        buf = self.msg_buf
+    def _initialize_bluetooth(self):
+        """Hàm nội bộ để khởi tạo tất cả các thành phần Bluetooth."""
+        print("Parser: Đang khởi tạo ngăn xếp Bluetooth...")
+        
+        # 1. Lấy đối tượng BLE và reset trạng thái (Rất quan trọng!)
+        self._ble = ubluetooth.BLE()
+        self._ble.active(False)
+        time.sleep_ms(200) # Chờ một chút để đảm bảo stack đã tắt hoàn toàn
+        self._ble.active(True)
+        print("Parser: Ngăn xếp BLE đã được kích hoạt.")
 
-        if h == 't':  # Target data
+        # 2. Gán hàm xử lý ngắt
+        self._ble.irq(self._irq)
+        print("Parser: Đã gán hàm xử lý ngắt (IRQ).")
+
+        # 3. Định nghĩa các hằng số và gói tin
+        _DEVICE_NAME = 'OpenBot-ESP32'
+        _UART_SERVICE_UUID = ubluetooth.UUID("61653dc3-4021-4d1e-ba83-8b4eec61d613")
+        _RX_CHAR_UUID = ubluetooth.UUID("06386c14-86ea-4d71-811c-48f97c58f8c9")
+        _TX_CHAR_UUID = ubluetooth.UUID("9bf1103b-834c-47cf-b149-c9e4bcf778a7")
+        
+        self._adv_payload = b'\x02\x01\x06\x11\x07' + _UART_SERVICE_UUID
+        name_bytes = _DEVICE_NAME.encode('utf-8')
+        self._scan_rsp_payload = bytes([len(name_bytes) + 1, 0x09]) + name_bytes
+        
+        # 4. Đăng ký dịch vụ
+        uart_service = (_UART_SERVICE_UUID, ((_TX_CHAR_UUID, ubluetooth.FLAG_NOTIFY), (_RX_CHAR_UUID, ubluetooth.FLAG_WRITE),))
+        services_handles = self._ble.gatts_register_services((uart_service,))
+        self._rx_handle = services_handles[0][1] # Lấy handle của RX characteristic
+        print(f"Parser: Dịch vụ UART đã được đăng ký, RX handle: {self._rx_handle}")
+        
+        # 5. Bắt đầu quảng bá
+        self._connections = set()
+        self._advertise()
+
+    def _irq(self, event, data):
+        """Hàm xử lý ngắt từ BLE stack."""
+        if self.connection_type != 1: return
+
+        if event == 1:
+            conn_handle, _, _ = data
+            print("BLE: Đã kết nối.")
+            self._connections.add(conn_handle)
+            self._ble.gap_advertise(None)
+        elif event == 2:
+            conn_handle, _, _ = data
+            print("BLE: Đã ngắt kết nối.")
+            self._connections.remove(conn_handle)
+            self._advertise()
+        elif event == 3:
+            conn_handle, value_handle = data
+            if conn_handle in self._connections and value_handle == self._rx_handle:
+                received_data = self._ble.gatts_read(self._rx_handle)
+                for char_code in received_data:
+                    self.process_char(chr(char_code))
+
+    def _advertise(self):
+        """Bắt đầu quảng bá thiết bị."""
+        print("BLE: Bắt đầu quảng bá...")
+        try:
+            self._ble.gap_advertise(100000, adv_data=self._adv_payload, resp_data=self._scan_rsp_payload)
+        except Exception as e:
+            print(f"LỖI: Không thể quảng bá BLE. Lý do: {e}")
+
+
+    # =================================================================
+    # == LOGIC XỬ LÝ THÔNG ĐIỆP (Dùng chung)                       ==
+    # =================================================================
+    def parse_msg(self):
+        if self.header == 't':
             try:
-                parts = buf.split(',')
-                if len(parts) == 6:
-                    # Parse all values
-                    new_x = int(parts[0])
-                    new_y = int(parts[1])
-                    new_w = int(parts[2])
-                    new_h = int(parts[3])
-                    new_img_w = int(parts[4])
-                    new_img_h = int(parts[5])
-                    
-                    # Update all at once
-                    self.target_x = new_x
-                    self.target_y = new_y
-                    self.target_w = new_w
-                    self.target_h = new_h
-                    self.img_width = new_img_w
-                    self.img_height = new_img_h
+                parts = self.msg_buf.split(',')
+                if len(parts) == 4:
+                    self.target_x = int(parts[0])
+                    self.target_y = int(parts[1])
+                    self.target_w = int(parts[2])
+                    self.target_h = int(parts[3])
                     self.has_target = True
-                    
+                    self._last_update_ms = self._get_time_ms()
                 else:
                     self.has_target = False
-            except:
+            except (ValueError, IndexError):
                 self.has_target = False
-
-        # Reset state
+        
         self.msg_part = 0
         self.header = ''
         self.msg_buf = ''
 
     def process_char(self, char):
-        """Process single character"""
         if char in ('\n', '\r'):
             if self.header:
                 self.parse_msg()
-            else:
-                # Reset if empty line
-                self.msg_part = 0
-                self.header = ''
-                self.msg_buf = ''
             return
 
-        if self.msg_part == 0:  # HEADER
+        if self.msg_part == 0:
             self.header = char
             self.msg_part = 1
             self.msg_buf = ''
-        else:  # BODY
+        else:
             self.msg_buf += char
+            
+    def _get_time_ms(self):
+        return time.ticks_ms()
+        
+    def _time_diff_ms(self, start, end):
+        return time.ticks_diff(end, start)
 
-    # Public API
+    # =================================================================
+    # == PUBLIC API (Giao diện công khai)                           ==
+    # =================================================================
     def get_target_x(self):
-        self.read_stdin()
+        if self.connection_type == 0:
+            self.read_stdin()
         return self.target_x if self.has_target else None
     
     def get_target_y(self):
-        # Don't read again if just read in get_target_x
-        if self._consecutive_reads < 2:
+        if self.connection_type == 0 and self._consecutive_reads < 2:
             self.read_stdin()
         return self.target_y if self.has_target else None
     
     def get_target_w(self):
-        # Don't read again
         return self.target_w if self.has_target else None
     
     def get_target_h(self):
-        # Don't read again
         return self.target_h if self.has_target else None
     
     def get_target_box(self):
-        self.read_stdin()
+        if self.connection_type == 0:
+            self.read_stdin()
         if self.has_target:
             return (self.target_x, self.target_y, self.target_w, self.target_h)
-        return None
-    
-    def get_image_size(self):
-        if self.has_target:
-            return (self.img_width, self.img_height)
         return None
     
     def is_target_available(self):
         return self.has_target
     
     def get_data_age_ms(self):
-        """Get age of current data in milliseconds"""
         if self.has_target:
-            current = self._get_time_ms()
-            return self._time_diff_ms(self._last_update_ms, current)
+            return self._time_diff_ms(self._last_update_ms, self._get_time_ms())
         return -1
-
 
 
 
 # from yolouno_phone import OpenBotParser
 
-# parser = OpenBotParser()
+# parser = OpenBotParser(0)
 
 # async def task_forever():
 #   while True:
@@ -255,3 +284,10 @@ class OpenBotParser:
 #     await asleep_ms(100)
 
 # run_loop(main())
+
+
+
+
+
+
+
