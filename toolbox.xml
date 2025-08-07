@@ -1,5 +1,9 @@
 <xml xmlns="https://developers.google.com/blockly/xml" id="toolbox" style="display: none">
   <category name="OPENBOT" colour="#cb2026" icon="camera">
+
+    <block type="init_openbot_parser">
+      <field name="CONNECTION">0</field>
+    </block>
     
     <!-- <block type="read_openbot_data"></block> -->
 
