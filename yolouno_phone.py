@@ -1,6 +1,7 @@
-# File: yolouno_ble.py
-# Mô tả: Thư viện OpenBot Parser đa năng, hỗ trợ cả kết nối USB và Bluetooth.
-# Toàn bộ logic được đóng gói trong một class duy nhất. (Phiên bản sửa lỗi BLE)
+# =========================================================
+# ============== by KDI EDU ===============================
+# ========== https://kdi.edu.vn/ ==========================
+# =========================================================
 
 import sys
 import time
@@ -10,40 +11,63 @@ except ImportError:
     print("Cảnh báo: Không tìm thấy thư viện ubluetooth. Chế độ Bluetooth sẽ không hoạt động.")
     ubluetooth = None
 
+# This class implements a simple and efficient moving average filter.
+class _MovingAverageFilter:
+    """Một bộ lọc trung bình trượt đơn giản và hiệu quả."""
+    def __init__(self, size=5):
+        self.size = size
+        self.buffer = []
+        self.sum = 0
+
+    def add(self, value):
+        """Thêm một giá trị mới vào bộ lọc và trả về giá trị trung bình đã được làm mượt."""
+        if len(self.buffer) == self.size:
+            self.sum -= self.buffer.pop(0)
+        
+        self.buffer.append(value)
+        self.sum += value
+        
+        return int(self.sum / len(self.buffer))
+
+# This class serves as the main parser for OpenBot, handling both USB and Bluetooth connections.
+# It includes methods for reading data, processing messages, and applying a moving average filter.
 class OpenBotParser:
     """
     Class chính để tương tác với OpenBot.
     Hỗ trợ cả kết nối USB (0) và Bluetooth (1).
     """
-    def __init__(self, connection_type=1):
+    def __init__(self, connection_type=1, filter_size=5):
         """
         Khởi tạo Parser.
         :param connection_type: Loại kết nối. 0=USB, 1=Bluetooth (mặc định).
+        :param filter_size: Kích thước cửa sổ cho bộ lọc trung bình trượt.
         """
-        # --- Dữ liệu lưu trữ ---
         self.target_x = 0
         self.target_y = 0
         self.target_w = 0
         self.target_h = 0
         self.has_target = False
         
-        # --- Trạng thái của bộ xử lý (dùng chung) ---
+        if filter_size > 0:
+            print(f"Parser: Kích hoạt bộ lọc trung bình trượt với kích thước = {filter_size}")
+            self._filter_x = _MovingAverageFilter(filter_size)
+            self._filter_y = _MovingAverageFilter(filter_size)
+            self._filter_w = _MovingAverageFilter(filter_size)
+            self._filter_h = _MovingAverageFilter(filter_size)
+        else:
+            self._filter_x = None 
+
         self.msg_part = 0
         self.header = ''
         self.msg_buf = ''
         
-        # --- Tối ưu hóa cho đọc USB ---
         self._last_update_ms = 0
         self._consecutive_reads = 0
         self._max_consecutive = 3
         
-        # --- Quản lý loại kết nối ---
         self.connection_type = -1
         self.set_connection_type(connection_type)
 
-    # =================================================================
-    # == QUẢN LÝ KẾT NỐI                                          ==
-    # =================================================================
     def set_connection_type(self, connection_type):
         """Đặt loại kết nối: 0 cho USB, 1 cho Bluetooth."""
         if connection_type not in (0, 1):
@@ -65,9 +89,7 @@ class OpenBotParser:
         """Lấy loại kết nối hiện tại."""
         return self.connection_type
 
-    # =================================================================
-    # == LOGIC ĐỌC DỮ LIỆU (Tách biệt cho từng loại)                ==
-    # =================================================================
+    # This method reads data from stdin (USB) and processes it.
     def read_stdin(self):
         """Đọc dữ liệu từ USB (stdin) với logic tối ưu hóa."""
         if self.connection_type != 0:
@@ -119,23 +141,22 @@ class OpenBotParser:
             pass
         except Exception as e:
             pass
-
+        
+        
+    # This method initializes the Bluetooth stack and sets up the necessary services and characteristics.
     def _initialize_bluetooth(self):
         """Hàm nội bộ để khởi tạo tất cả các thành phần Bluetooth."""
         print("Parser: Đang khởi tạo ngăn xếp Bluetooth...")
         
-        # 1. Lấy đối tượng BLE và reset trạng thái (Rất quan trọng!)
         self._ble = ubluetooth.BLE()
         self._ble.active(False)
-        time.sleep_ms(200) # Chờ một chút để đảm bảo stack đã tắt hoàn toàn
+        time.sleep_ms(200)
         self._ble.active(True)
         print("Parser: Ngăn xếp BLE đã được kích hoạt.")
 
-        # 2. Gán hàm xử lý ngắt
         self._ble.irq(self._irq)
         print("Parser: Đã gán hàm xử lý ngắt (IRQ).")
 
-        # 3. Định nghĩa các hằng số và gói tin
         _DEVICE_NAME = 'OpenBot-ESP32'
         _UART_SERVICE_UUID = ubluetooth.UUID("61653dc3-4021-4d1e-ba83-8b4eec61d613")
         _RX_CHAR_UUID = ubluetooth.UUID("06386c14-86ea-4d71-811c-48f97c58f8c9")
@@ -145,13 +166,11 @@ class OpenBotParser:
         name_bytes = _DEVICE_NAME.encode('utf-8')
         self._scan_rsp_payload = bytes([len(name_bytes) + 1, 0x09]) + name_bytes
         
-        # 4. Đăng ký dịch vụ
         uart_service = (_UART_SERVICE_UUID, ((_TX_CHAR_UUID, ubluetooth.FLAG_NOTIFY), (_RX_CHAR_UUID, ubluetooth.FLAG_WRITE),))
         services_handles = self._ble.gatts_register_services((uart_service,))
-        self._rx_handle = services_handles[0][1] # Lấy handle của RX characteristic
+        self._rx_handle = services_handles[0][1]
         print(f"Parser: Dịch vụ UART đã được đăng ký, RX handle: {self._rx_handle}")
         
-        # 5. Bắt đầu quảng bá
         self._connections = set()
         self._advertise()
 
@@ -184,19 +203,29 @@ class OpenBotParser:
         except Exception as e:
             print(f"LỖI: Không thể quảng bá BLE. Lý do: {e}")
 
-
-    # =================================================================
-    # == LOGIC XỬ LÝ THÔNG ĐIỆP (Dùng chung)                       ==
-    # =================================================================
+    # This method parses the received message and updates the target coordinates and dimensions.
+    # It also applies the moving average filter if it is enabled.
     def parse_msg(self):
         if self.header == 't':
             try:
                 parts = self.msg_buf.split(',')
                 if len(parts) == 4:
-                    self.target_x = int(parts[0])
-                    self.target_y = int(parts[1])
-                    self.target_w = int(parts[2])
-                    self.target_h = int(parts[3])
+                    raw_x = int(parts[0])
+                    raw_y = int(parts[1])
+                    raw_w = int(parts[2])
+                    raw_h = int(parts[3])
+                    
+                    if self._filter_x:
+                        self.target_x = self._filter_x.add(raw_x)
+                        self.target_y = self._filter_y.add(raw_y)
+                        self.target_w = self._filter_w.add(raw_w)
+                        self.target_h = self._filter_h.add(raw_h)
+                    else:
+                        self.target_x = raw_x
+                        self.target_y = raw_y
+                        self.target_w = raw_w
+                        self.target_h = raw_h
+
                     self.has_target = True
                     self._last_update_ms = self._get_time_ms()
                 else:
@@ -227,9 +256,7 @@ class OpenBotParser:
     def _time_diff_ms(self, start, end):
         return time.ticks_diff(end, start)
 
-    # =================================================================
-    # == PUBLIC API (Giao diện công khai)                           ==
-    # =================================================================
+    # This method retrieves the target coordinates and dimensions.
     def get_target_x(self):
         if self.connection_type == 0:
             self.read_stdin()
@@ -246,6 +273,7 @@ class OpenBotParser:
     def get_target_h(self):
         return self.target_h if self.has_target else None
     
+    # This function helps to debug easily by returning all target data in a tuple.
     def get_target_box(self):
         if self.connection_type == 0:
             self.read_stdin()
@@ -263,6 +291,8 @@ class OpenBotParser:
 
 
 
+
+# Example usage:
 # from yolouno_phone import OpenBotParser
 
 # parser = OpenBotParser(0)
