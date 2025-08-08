@@ -52,41 +52,7 @@
 //   return code;
 // };
 
-// Khối lấy thông tin target
-Blockly.Blocks['get_target_info'] = {
-  init: function () {
-    this.jsonInit({
-      type: "get_target_info",
-      message0: "Lấy %1 của vật thể",
-      args0: [
-        {
-          type: "field_dropdown",
-          name: "PROPERTY",
-          options: [
-            ["x", "x"],
-            ["y", "y"],
-            ["w", "w"],
-            ["h", "h"]
-          ]
-        }
-      ],
-      output: "Number",
-      colour: "#d84770ff",
-      tooltip: "x,y là tọa độ trung tâm, w là chiều rộng, h là chiều cao",
-      helpUrl: ""
-    });
-  }
-};
 
-Blockly.Python['get_target_info'] = function(block) {
-  var property = block.getFieldValue('PROPERTY');
-  
-  Blockly.Python.definitions_['import_openbot_parser'] = 'from yolouno_phone import OpenBotParser';
-  // Blockly.Python.definitions_['create_openbot_parser'] = 'parser = OpenBotParser()';
-  
-  var code = 'parser.get_target_' + property + '()';
-  return [code, Blockly.Python.ORDER_ATOMIC];
-};
 
 // Block khởi tạo OpenBot Parser
 Blockly.Blocks['init_openbot_parser'] = {
@@ -119,9 +85,73 @@ Blockly.Python['init_openbot_parser'] = function(block) {
   Blockly.Python.definitions_['import_openbot_parser'] = 'from yolouno_phone import OpenBotParser';
   Blockly.Python.definitions_['create_openbot_parser'] = 'parser = OpenBotParser(' + connection + ')';
   
-  // Không cần code trong body vì đã khởi tạo trong definitions
   return '';
 };
+
+
+
+
+// Khối lấy thông tin target
+Blockly.Blocks['get_target_info'] = {
+  init: function () {
+    this.jsonInit({
+      type: "get_target_info",
+      message0: "Lấy %1 của vật thể",
+      args0: [
+        {
+          type: "field_dropdown",
+          name: "PROPERTY",
+          options: [
+            ["x", "x"],
+            ["y", "y"],
+            ["w", "w"],
+            ["h", "h"]
+          ]
+        }
+      ],
+      output: "Number",
+      colour: "#d84770ff",
+      tooltip: "x,y là tọa độ trung tâm, w là chiều rộng, h là chiều cao",
+      helpUrl: ""
+    });
+  }
+};
+
+Blockly.Python['get_target_info'] = function(block) {
+  var property = block.getFieldValue('PROPERTY');
+  
+  Blockly.Python.definitions_['import_openbot_parser'] = 'from yolouno_phone import OpenBotParser';
+  // Blockly.Python.definitions_['create_openbot_parser'] = 'parser = OpenBotParser()'; // nếu không gọi khối khởi tạo loại kết nối sẽ báo lỗi.
+  
+  var code = 'parser.get_target_' + property + '()';
+  return [code, Blockly.Python.ORDER_ATOMIC];
+};
+
+
+
+
+// Khối gởi p1 đến OpenBot
+Blockly.Blocks['send_p1'] = {
+  init: function () {
+    this.jsonInit({
+      type: "send_p1",
+      message0: "Chụp ảnh",
+      previousStatement: null,
+      nextStatement: null,
+      colour: "#cb2026",
+      tooltip: "Gởi lệnh chụp hình đến App OpenBot",
+      helpUrl: ""
+    });
+  }
+};
+
+Blockly.Python['send_p1'] = function(block) {
+  Blockly.Python.definitions_['import_openbot_parser'] = 'from yolouno_phone import OpenBotParser';
+
+  code = 'parser.send_msg("p1")\n'; 
+  return code;
+};
+
 
 // // Khối đọc dữ liệu từ stdin
 // Blockly.Blocks['read_openbot_data'] = {

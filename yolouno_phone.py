@@ -61,12 +61,18 @@ class OpenBotParser:
         self.header = ''
         self.msg_buf = ''
         
+        self.p1_send_request = False
+        self._tx_handle = None
+        
         self._last_update_ms = 0
         self._consecutive_reads = 0
         self._max_consecutive = 3
         
         self.connection_type = -1
         self.set_connection_type(connection_type)
+        
+
+
 
     def set_connection_type(self, connection_type):
         """Đặt loại kết nối: 0 cho USB, 1 cho Bluetooth."""
@@ -158,7 +164,7 @@ class OpenBotParser:
         print("Parser: Đã gán hàm xử lý ngắt (IRQ).")
 
         _DEVICE_NAME = 'OpenBot-ESP32'
-        _UART_SERVICE_UUID = ubluetooth.UUID("61653dc3-4021-4d1e-ba83-8b4eec61d613")
+        _UART_SERVICE_UUID = ubluetooth.UUID("61653dc3-4021-4d1e-ba83-8b4eec61d613") # UUID Openbot App
         _RX_CHAR_UUID = ubluetooth.UUID("06386c14-86ea-4d71-811c-48f97c58f8c9")
         _TX_CHAR_UUID = ubluetooth.UUID("9bf1103b-834c-47cf-b149-c9e4bcf778a7")
         
@@ -168,8 +174,10 @@ class OpenBotParser:
         
         uart_service = (_UART_SERVICE_UUID, ((_TX_CHAR_UUID, ubluetooth.FLAG_NOTIFY), (_RX_CHAR_UUID, ubluetooth.FLAG_WRITE),))
         services_handles = self._ble.gatts_register_services((uart_service,))
+        self._tx_handle = services_handles[0][0] 
         self._rx_handle = services_handles[0][1]
-        print(f"Parser: Dịch vụ UART đã được đăng ký, RX handle: {self._rx_handle}")
+        print(f"Parser: Dịch vụ UART đã được đăng ký, TX handle: {self._tx_handle}, RX handle: {self._rx_handle}")
+
         
         self._connections = set()
         self._advertise()
@@ -250,6 +258,19 @@ class OpenBotParser:
         else:
             self.msg_buf += char
             
+    # This method sends a message p0 or p1 over Bluetooth (not implemented in this example).
+    def send_msg(self, msg="p0"):
+        """Gửi một tin nhắn qua Bluetooth đến tất cả các thiết bị đã kết nối."""
+        if self.connection_type != 1 or not self._connections:
+            return
+        
+        data_to_send = str(msg).encode('utf-8')
+        for conn_handle in self._connections:
+            try:
+                self._ble.gatts_notify(conn_handle, self._tx_handle, data_to_send)
+            except Exception as e:
+                print(f"LỖI: Không thể gửi tin nhắn đến handle {conn_handle}. Lý do: {e}")
+        
     def _get_time_ms(self):
         return time.ticks_ms()
         
@@ -292,15 +313,16 @@ class OpenBotParser:
 
 
 
-# Example usage:
+# # Example usage:
 # from yolouno_phone import OpenBotParser
 
-# parser = OpenBotParser(0)
+# parser = OpenBotParser(1)
 
 # async def task_forever():
 #   while True:
 #     await asleep_ms(50)
-#     print((''.join([str(x) for x in ['x: ', parser.get_target_x(), ' y: ', parser.get_target_y(), ' w: ', parser.get_target_w(), ' h: ', parser.get_target_h()]])))
+#     # print((''.join([str(x) for x in ['x: ', parser.get_target_x(), ' y: ', parser.get_target_y(), ' w: ', parser.get_target_w(), ' h: ', parser.get_target_h()]])))
+#     parser.send_msg()
 
 # async def setup():
 
@@ -317,6 +339,38 @@ class OpenBotParser:
 
 
 
+# from yolouno_phone import OpenBotParser
+# from abutton import *
+
+# parser = OpenBotParser(1)
+
+# btn_BOOT= aButton(BOOT_PIN)
+
+# def deinit():
+#   btn_BOOT.deinit()
+
+# import yolo_uno
+# yolo_uno.deinit = deinit
+
+# async def task_forever():
+#   while True:
+#     await asleep_ms(50)
+#     print((''.join([str(x) for x in ['x1: ', parser.get_target_x(), ' y2: ', parser.get_target_y(), ' w: ', parser.get_target_w(), ' h: ', parser.get_target_h()]])))
+#     if btn_BOOT():
+#       pass
+
+# async def setup():
+
+#   print('App started')
+
+#   create_task(task_forever())
+
+# async def main():
+#   await setup()
+#   while True:
+#     await asleep_ms(100)
+
+# run_loop(main())
 
 
 
