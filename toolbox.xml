@@ -12,9 +12,6 @@
     <block type="get_target_info">
       <field name="PROPERTY">x</field>
     </block>
-
-    <!-- Khối chụp hình không nhập thông số gì cả -->
-    <block type="take_picture"></block>
     
     <!-- Khối gởi p1 đến OpenBot -->
     <block type="send_p1"></block>
