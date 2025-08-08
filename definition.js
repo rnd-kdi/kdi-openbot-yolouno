@@ -148,7 +148,7 @@ Blockly.Blocks['send_p1'] = {
 Blockly.Python['send_p1'] = function(block) {
   Blockly.Python.definitions_['import_openbot_parser'] = 'from yolouno_phone import OpenBotParser';
 
-  code = 'parser.send_msg("p1")\n'; 
+  var code = 'parser.send_msg("p1")\n'; 
   return code;
 };
 
