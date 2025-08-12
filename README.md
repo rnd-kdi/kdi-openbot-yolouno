@@ -17,10 +17,9 @@ An ESP32-based board.
 MicroPython firmware installed.
 Openbot App on android.
 
-🚀 Quick Start
-Upload the yolouno_ble.py file to your ESP32's root directory.
+🚀 Note
+Turn off USB/BLE connection on the OpenBot app before uploading code to the YOLO UNO board.
 
-Use the following code in your main.py file to get started:
 
 # --- CONFIGURATION ---
 # connection_type: 1 for Bluetooth, 0 for USB

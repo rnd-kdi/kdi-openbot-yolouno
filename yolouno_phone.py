@@ -258,18 +258,34 @@ class OpenBotParser:
         else:
             self.msg_buf += char
             
-    # This method sends a message p0 or p1 over Bluetooth (not implemented in this example).
+    # This method sends a message p0 or p1.
     def send_msg(self, msg="p0"):
         """Gửi một tin nhắn qua Bluetooth đến tất cả các thiết bị đã kết nối."""
-        if self.connection_type != 1 or not self._connections:
-            return
-        
-        data_to_send = str(msg).encode('utf-8')
-        for conn_handle in self._connections:
+        if self.connection_type == 1:  # Bluetooth
+            data_to_send = str(msg).encode('utf-8')
+            # sent_count = 0
+            for conn_handle in self._connections:
+                try:
+                    self._ble.gatts_notify(conn_handle, self._tx_handle, data_to_send)
+                    # sent_count += 1
+                except Exception as e:
+                    print(f"LỖI: Không thể gửi tin nhắn đến handle {conn_handle}. Lý do: {e}")
+                    
+            # if sent_count > 0:
+            #     print(f"BLE: Đã gửi '{msg}' đến {sent_count} thiết bị")
+
+        elif self.connection_type == 0:  # USB mode
             try:
-                self._ble.gatts_notify(conn_handle, self._tx_handle, data_to_send)
+                message_to_send = f"{msg}\n"
+                sys.stdout.write(message_to_send)
+                sys.stdout.flush()  # Đảm bảo data được gửi ngay lập tức
+                print(f"USB: Đã gửi tin nhắn '{msg}'")  # Log để debug
             except Exception as e:
-                print(f"LỖI: Không thể gửi tin nhắn đến handle {conn_handle}. Lý do: {e}")
+                print(f"LỖI: Không thể gửi tin nhắn qua USB. Lý do: {e}")
+                
+        else:  # Unknown connection type
+            print(f"LỖI: Loại kết nối không xác định: {self.connection_type}")
+
         
     def _get_time_ms(self):
         return time.ticks_ms()
@@ -313,36 +329,10 @@ class OpenBotParser:
 
 
 
-# # Example usage:
-# from yolouno_phone import OpenBotParser
-
-# parser = OpenBotParser(1)
-
-# async def task_forever():
-#   while True:
-#     await asleep_ms(50)
-#     # print((''.join([str(x) for x in ['x: ', parser.get_target_x(), ' y: ', parser.get_target_y(), ' w: ', parser.get_target_w(), ' h: ', parser.get_target_h()]])))
-#     parser.send_msg()
-
-# async def setup():
-
-#   print('App started')
-
-#   create_task(task_forever())
-
-# async def main():
-#   await setup()
-#   while True:
-#     await asleep_ms(100)
-
-# run_loop(main())
-
-
-
 # from yolouno_phone import OpenBotParser
 # from abutton import *
 
-# parser = OpenBotParser(1)
+# parser = OpenBotParser(0)
 
 # btn_BOOT= aButton(BOOT_PIN)
 
@@ -357,11 +347,12 @@ class OpenBotParser:
 #     await asleep_ms(50)
 #     print((''.join([str(x) for x in ['x1: ', parser.get_target_x(), ' y2: ', parser.get_target_y(), ' w: ', parser.get_target_w(), ' h: ', parser.get_target_h()]])))
 #     if btn_BOOT():
-#       pass
+#       parser.send_msg("p1")
 
 # async def setup():
 
 #   print('App started')
+#   await asleep_ms(5000)
 
 #   create_task(task_forever())
 

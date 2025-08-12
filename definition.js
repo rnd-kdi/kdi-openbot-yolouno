@@ -110,7 +110,7 @@ Blockly.Blocks['get_target_info'] = {
         }
       ],
       output: "Number",
-      colour: "#d84770ff",
+      colour: "#47d3d8ff",
       tooltip: "x,y là tọa độ trung tâm, w là chiều rộng, h là chiều cao",
       helpUrl: ""
     });
