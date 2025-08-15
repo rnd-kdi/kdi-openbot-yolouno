@@ -36,7 +36,7 @@ class OpenBotParser:
     Class chính để tương tác với OpenBot.
     Hỗ trợ cả kết nối USB (0) và Bluetooth (1).
     """
-    def __init__(self, connection_type=1, filter_size=3):
+    def __init__(self, connection_type=1, filter_size=5):
         """
         Khởi tạo Parser.
         :param connection_type: Loại kết nối. 0=USB, 1=Bluetooth (mặc định).

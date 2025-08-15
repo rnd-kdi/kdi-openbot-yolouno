@@ -23,7 +23,7 @@ Turn off USB/BLE connection on the OpenBot app before uploading code to the YOLO
 
 # --- CONFIGURATION ---
 # connection_type: 1 for Bluetooth, 0 for USB
-# filter_size: 3 is a good starting point
+# filter_size: 5 is a good starting point
 
 ✍️ Author
 KDI EDU
