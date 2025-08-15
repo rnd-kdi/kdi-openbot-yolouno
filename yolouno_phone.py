@@ -36,7 +36,7 @@ class OpenBotParser:
     Class chính để tương tác với OpenBot.
     Hỗ trợ cả kết nối USB (0) và Bluetooth (1).
     """
-    def __init__(self, connection_type=1, filter_size=5):
+    def __init__(self, connection_type=1, filter_size=3):
         """
         Khởi tạo Parser.
         :param connection_type: Loại kết nối. 0=USB, 1=Bluetooth (mặc định).
@@ -297,18 +297,18 @@ class OpenBotParser:
     def get_target_x(self):
         if self.connection_type == 0:
             self.read_stdin()
-        return self.target_x if self.has_target else None
+        return self.target_x if self.has_target else 0
     
     def get_target_y(self):
         if self.connection_type == 0 and self._consecutive_reads < 2:
             self.read_stdin()
-        return self.target_y if self.has_target else None
+        return self.target_y if self.has_target else 0
     
     def get_target_w(self):
-        return self.target_w if self.has_target else None
+        return self.target_w if self.has_target else 0
     
     def get_target_h(self):
-        return self.target_h if self.has_target else None
+        return self.target_h if self.has_target else 0
     
     # This function helps to debug easily by returning all target data in a tuple.
     def get_target_box(self):
@@ -316,7 +316,7 @@ class OpenBotParser:
             self.read_stdin()
         if self.has_target:
             return (self.target_x, self.target_y, self.target_w, self.target_h)
-        return None
+        return 0
     
     def is_target_available(self):
         return self.has_target
@@ -362,7 +362,5 @@ class OpenBotParser:
 #     await asleep_ms(100)
 
 # run_loop(main())
-
-
 
 
